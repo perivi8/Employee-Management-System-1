@@ -9,8 +9,18 @@ from routes.email_notifications import email_notifications_bp
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# ✅ Enable CORS for all routes and allow credentials
-CORS(app, origins=Config.FRONTEND_ORIGIN, supports_credentials=True)
+# ✅ Enable CORS for both localhost & Vercel
+CORS(app, origins=[
+    "http://localhost:4200",
+    "https://employee-management-system-rose-psi.vercel.app"
+], supports_credentials=True)
+
+# ✅ Automatically allow all OPTIONS requests (preflight)
+@app.before_request
+def handle_options():
+    from flask import request
+    if request.method == 'OPTIONS':
+        return '', 200
 
 jwt = JWTManager(app)
 
