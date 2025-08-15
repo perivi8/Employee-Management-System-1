@@ -1,29 +1,32 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from pymongo import MongoClient, DESCENDING
+from pymongo import DESCENDING
 from bson import ObjectId
-import os
+from utils.db import db
 
 email_notifications_bp = Blueprint('email_notifications', __name__)
-client = MongoClient(os.getenv("MONGO_URI"))
-db = client.EmployeeManagement
 
-# GET /api/notifications/emails
-@email_notifications_bp.route('/', methods=['GET'])
+# GET /api/notifications/emails/
+@email_notifications_bp.route('/', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def list_email_notifications():
+    if request.method == "OPTIONS":
+        return '', 200
     user_id = get_jwt_identity()
-    user = db.users.find_one({"_id": ObjectId(user_id)})
+    try:
+        user = db.users.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        return jsonify([]), 200
     if not user:
-        return jsonify({"msg": "User not found"}), 404
+        return jsonify([]), 200
 
     user_email = user.get('email')
     if not user_email:
-        return jsonify([])
+        return jsonify([]), 200
 
     cursor = db.email_notifications.find(
         {"recipient": user_email}
-    ).sort("timestamp", DESCENDING).limit(20)
+    ).sort("timestamp", DESCENDING).limit(50)
 
     emails = []
     for e in cursor:
@@ -32,9 +35,11 @@ def list_email_notifications():
     return jsonify(emails), 200
 
 # POST /api/notifications/emails/mark-read
-@email_notifications_bp.route('/mark-read', methods=['POST'])
+@email_notifications_bp.route('/mark-read', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def mark_read():
+    if request.method == "OPTIONS":
+        return '', 200
     data = request.get_json(silent=True) or {}
     ids = data.get("ids", [])
     if not isinstance(ids, list) or not ids:
@@ -44,7 +49,6 @@ def mark_read():
     user = db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         return jsonify({"msg": "User not found"}), 404
-
     user_email = user.get('email')
     if not user_email:
         return jsonify({"msg": "No email"}), 400
@@ -55,7 +59,6 @@ def mark_read():
             object_ids.append(ObjectId(_id))
         except Exception:
             pass
-
     if not object_ids:
         return jsonify({"msg": "Invalid IDs"}), 400
 
@@ -66,9 +69,11 @@ def mark_read():
     return jsonify({"success": True}), 200
 
 # POST /api/notifications/emails/remove
-@email_notifications_bp.route('/remove', methods=['POST'])
+@email_notifications_bp.route('/remove', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def remove_email():
+    if request.method == "OPTIONS":
+        return '', 200
     data = request.get_json(silent=True) or {}
     notif_id = data.get("id")
     if not notif_id:
@@ -78,7 +83,6 @@ def remove_email():
     user = db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         return jsonify({"msg": "User not found"}), 404
-
     user_email = user.get('email')
     if not user_email:
         return jsonify({"msg": "No email"}), 400
@@ -89,8 +93,6 @@ def remove_email():
         return jsonify({"msg": "Invalid ID"}), 400
 
     result = db.email_notifications.delete_one({"_id": oid, "recipient": user_email})
-
     if result.deleted_count == 0:
         return jsonify({"msg": "Notification not found or already removed"}), 404
-
     return jsonify({"success": True}), 200
